@@ -9,11 +9,12 @@ MODELS = yaml.safe_load((ROOT/"scraper"/"models.yaml").read_text())["models"]
 # Known driver detail URLs per model
 CPLD_PAGES = {
     "R640":   "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=9n4dh",
-    "R740":   "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pc0n3",
-    "R740XD": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pc0n3",
+    "R740":   "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=g65gh",
+    "R740XD": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=g65gh",
     "R650":   "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=fctdf",
     "R750":   "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=fctdf",
     "C6525":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=wv5d3",
+    "T340:":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=r5kd4",
 }
 
 HEADERS = {
