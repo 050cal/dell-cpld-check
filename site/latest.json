@@ -1,3 +1,35 @@
 {
-  "generated_utc": "initial-run",
- 
+  "generated_utc": "2026-01-21T19:15:00Z",
+  "models": [
+    {
+      "model": "R640",
+      "cpld": "1.0.6",
+      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=9n4dh"
+    },
+    {
+      "model": "R740",
+      "cpld": "1.0.6",
+      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pc0n3"
+    },
+    {
+      "model": "R740XD",
+      "cpld": "1.0.6",
+      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pc0n3"
+    },
+    {
+      "model": "R650",
+      "cpld": "1.1.1",
+      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=fctdf"
+    },
+    {
+      "model": "R750",
+      "cpld": "1.1.1",
+      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=fctdf"
+    },
+    {
+      "model": "C6525",
+      "cpld": "1.1.4",
+      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=wv5d3"
+    }
+  ]
+}
