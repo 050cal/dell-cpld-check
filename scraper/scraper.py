@@ -16,6 +16,7 @@ CPLD_PAGES = {
     "C6525":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=wv5d3",
     "T340:":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=r5kd4",
     "R450:":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pryjm",
+    "R350:":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=w1htn",
 }
 
 HEADERS = {
