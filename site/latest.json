@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-01-21T19:15:00Z",
+  "generated_utc": "2026-01-22T04:12:06Z",
   "models": [
     {
       "model": "R640",
@@ -8,13 +8,13 @@
     },
     {
       "model": "R740",
-      "cpld": "1.0.6",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pc0n3"
+      "cpld": "1.1.4",
+      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=g65gh"
     },
     {
       "model": "R740XD",
-      "cpld": "1.0.6",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pc0n3"
+      "cpld": "1.1.4",
+      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=g65gh"
     },
     {
       "model": "R650",
