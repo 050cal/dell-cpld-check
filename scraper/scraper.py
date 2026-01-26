@@ -16,7 +16,7 @@ CPLD_PAGES = {
     "C6525":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=wv5d3",
     "PowerEdge T340":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=r5kd4",
     "PowerEdge R450":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pryjm",
-    "R350":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=w1htn",
+    "PowerEdge R350":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=w1htn",
     "PowerEdge R440":    "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=1gw62",
 }
 
