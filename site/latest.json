@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-01-26T04:19:04Z",
+  "generated_utc": "2026-01-26T17:56:15Z",
   "models": [
     {
       "model": "R640",
@@ -32,7 +32,7 @@
       "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=wv5d3"
     },
     {
-      "model": "T340",
+      "model": "PowerEdge T340",
       "cpld": "1.0.5",
       "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=r5kd4"
     },
