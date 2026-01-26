@@ -18,6 +18,7 @@ CPLD_PAGES = {
     "PowerEdge R450":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pryjm",
     "PowerEdge R350":  "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=w1htn",
     "PowerEdge R440":    "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=1gw62",
+    "PowerEdge R550":    "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pryjm",
 }
 
 HEADERS = {
