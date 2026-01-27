@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-01-26T17:56:15Z",
+  "generated_utc": "2026-01-27T04:10:59Z",
   "models": [
     {
       "model": "R640",
@@ -37,14 +37,24 @@
       "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=r5kd4"
     },
     {
-      "model": "R450",
+      "model": "PowerEdge R450",
       "cpld": "1.0.7",
       "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pryjm"
     },
     {
-      "model": "R350",
+      "model": "PowerEdge R350",
       "cpld": "1.0.3",
       "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=w1htn"
+    },
+    {
+      "model": "PowerEdge R440",
+      "cpld": "1.0.10",
+      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=1gw62"
+    },
+    {
+      "model": "PowerEdge R550",
+      "cpld": "1.0.7",
+      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pryjm"
     }
   ]
 }
