@@ -29,6 +29,13 @@ jobs:
       - name: Resolve latest CPLD URLs (creates scraper/cpld_pages.auto.yaml)
         run: python scraper/resolve_cpld_urls.py
 
+       - name: Show resolver output (overlay + report)
+        run: |
+          echo "----- cpld_pages.auto.yaml -----"
+          test -f scraper/cpld_pages.auto.yaml && cat scraper/cpld_pages.auto.yaml || echo "MISSING"
+          echo "----- cpld_pages.report.json -----"
+          test -f scraper/cpld_pages.report.json && cat scraper/cpld_pages.report.json || echo "MISSING"
+
       - name: Commit overlay (if changed)
         run: |
           git config user.name "github-actions[bot]"
