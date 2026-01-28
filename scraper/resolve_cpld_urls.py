@@ -15,7 +15,7 @@ from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# ---- JSON endpoint Dell site uses on the Drivers page ----
+# ---- JSON endpoint Dell's Drivers page uses (discovered via DevTools) ----
 API_BASE = "https://www.dell.com/support/driver/en-us/ips/api/driverlist/fetchdriversbyproduct"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; DellCPLDResolver/1.0)",
@@ -24,8 +24,7 @@ HEADERS = {
 }
 DRIVERID_RE = re.compile(r"_([0-9A-Z]{5})_", re.IGNORECASE)
 
-# ---- Enterprise (DUP) catalog that includes BIOS/Firmware/Drivers incl. CPLD ----
-# Dell KB with catalog links confirms Enterprise Catalog is Catalog.gz (weekly refreshed). [1](https://www.dell.com/support/kbdoc/en-us/000132986/dell-emc-catalog-links-for-poweredge-servers)
+# ---- Enterprise (DUP) catalog (official PowerEdge update catalog) ----
 CATALOG_URL = "https://downloads.dell.com/catalog/Catalog.gz"
 
 
@@ -33,6 +32,7 @@ CATALOG_URL = "https://downloads.dell.com/catalog/Catalog.gz"
 # I/O helpers
 # ==============================
 def _write_overlay_and_report(overlay: Dict[str, str], details: List[Dict], warn: Optional[str] = None) -> None:
+    """Always write both files so the workflow can print them even after errors."""
     out_dir = ROOT / "scraper"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -68,10 +68,12 @@ def _parse_date(s: str) -> datetime:
 # JSON path (preferred when available)
 # ==============================
 def _extract_driverid_from_record(rec: Dict) -> Optional[str]:
+    # Try common JSON fields first
     for key in ("DriverId", "DriverID", "ReleaseID", "DellDriverId", "UniqueDownloadId"):
         val = rec.get(key)
         if isinstance(val, str) and len(val) == 5:
             return val.upper()
+    # Fallback to filename/URL
     ffi = rec.get("FileFrmtInfo") or rec.get("fileFrmtInfo") or {}
     for c in (ffi.get("FileName") or "", ffi.get("HttpFileLocation") or ""):
         m = DRIVERID_RE.search(c or "")
@@ -87,11 +89,10 @@ def _is_cpld_json(rec: Dict) -> bool:
 
 def _resolve_latest_cpld_json(productcode: str) -> Optional[Dict]:
     """
-    Try Dell's internal JSON used by the Drivers page. We iterate a few oscodes and set lob=POWEREDGE.
-    If any call returns CPLD entries, choose newest by Release/LUPD/Version.
-    (This endpoint is commonly discovered via browser DevTools network tab.) [3](https://gist.github.com/davecoutts/3b5d79ce50c8214e8cf598c4016b609d)[4](https://www.reddit.com/r/PowerShell/comments/ripbco/i_am_trying_to_figure_out_where_i_would_look_up/)
+    Try Dell's internal JSON endpoint. Iterate a few oscodes and set lob=POWEREDGE.
+    If any call returns CPLD entries, pick the newest.
     """
-    oscodes = ["NAA", "W2022", "WT64A", "UBT20"]  # NAA=not-applicable, Windows Server 2022, Win10 x64, Ubuntu 20.x
+    oscodes = ["NAA", "W2022", "WT64A", "UBT20"]  # Not-applicable, Win Server 2022, Win10 x64, Ubuntu 20.x
     for oscode in oscodes:
         params = {
             "productcode": productcode,
@@ -137,7 +138,7 @@ def _download_catalog_text() -> str:
     r.raise_for_status()
     with gzip.GzipFile(fileobj=io.BytesIO(r.content)) as gz:
         raw = gz.read()
-    # Try robust decode order; Enterprise catalog often is UTF-16LE
+    # Enterprise catalog is often UTF-16LE. Try robust sequence.
     for enc in ("utf-16le", "utf-16", "utf-8-sig", "utf-8"):
         try:
             return raw.decode(enc)
@@ -166,7 +167,13 @@ def _canon(s: str) -> str:
 
 def _labels_for_name(name: str) -> Set[str]:
     base = name.strip()
-    labels = {base, f"poweredge {base}", f"dell {base}", f"dell poweredge {base}", f"dell emc poweredge {base}"}
+    labels = {
+        base,
+        f"poweredge {base}",
+        f"dell {base}",
+        f"dell poweredge {base}",
+        f"dell emc poweredge {base}",
+    }
     return {_canon(x) for x in labels}
 
 
@@ -179,6 +186,27 @@ def _display_matches(name: str, display: str) -> bool:
     return bool(re.search(rf"\b{re.escape(base)}\b", disp))
 
 
+def _collect_models_from_component(sc: ET.Element, ns: Dict) -> List[str]:
+    """Support both SupportedSystems and TargetSystems shapes."""
+    labels: List[str] = []
+
+    # 1) SupportedSystems/Brand/Model
+    for brand in sc.findall(".//SupportedSystems/Brand", ns):
+        for model in brand.findall(".//Model", ns):
+            lbl = (model.findtext("./Display", namespaces=ns) or model.get("display") or "").strip()
+            if lbl:
+                labels.append(lbl)
+
+    # 2) TargetSystems/Brand/Model (older/newer variants)
+    for brand in sc.findall(".//TargetSystems/Brand", ns):
+        for model in brand.findall(".//Model", ns):
+            lbl = (model.findtext("./Display", namespaces=ns) or model.get("display") or "").strip()
+            if lbl:
+                labels.append(lbl)
+
+    return labels
+
+
 def _catalog_latest_cpld_for_model(xml_text: str, model_display: str) -> Optional[Dict]:
     root = ET.fromstring(xml_text)
     ns = {"d": root.tag.split('}')[0].strip('{')} if root.tag.startswith("{") else {}
@@ -188,19 +216,11 @@ def _catalog_latest_cpld_for_model(xml_text: str, model_display: str) -> Optiona
         if not _is_cpld_catalog(sc, ns):
             continue
 
-        # Collect target models (Display text)
-        models: List[str] = []
-        for brand in sc.findall(".//TargetSystems/Brand", ns):
-            for model in brand.findall(".//Model", ns):
-                lbl = (model.findtext("./Display", namespaces=ns) or model.get("display") or "").strip()
-                if lbl:
-                    models.append(lbl)
-
-        # Accept "R640", "PowerEdge R640", "Dell EMC PowerEdge R640", etc.
-        if not any(_display_matches(model_display, lbl) for lbl in models):
+        models = _collect_models_from_component(sc, ns)
+        if not models or not any(_display_matches(model_display, lbl) for lbl in models):
             continue
 
-        # Grab version/date and try to locate a filename or any attribute that reveals the DUP
+        # version/date and filename/attributes
         name = (sc.findtext(".//Display", ns) or sc.findtext(".//Name", ns) or "").strip()
         version = (sc.findtext(".//DellVersion", ns) or "").strip()
         rdate = (sc.findtext(".//ReleaseDate", ns) or "").strip()
@@ -220,7 +240,7 @@ def _catalog_latest_cpld_for_model(xml_text: str, model_display: str) -> Optiona
                 filename = val.split("/")[-1]
                 break
 
-        # Fallback: scan all descendant attributes; last resort serialize & regex
+        # If still nothing, scan all descendant attributes; last resort: regex over serialized XML
         if not filename:
             for el in sc.iter():
                 for a in ("path", "Path", "href", "src", "file", "filename", "FileName"):
@@ -336,7 +356,7 @@ def main() -> None:
     if unresolved:
         xml_text = ""
         try:
-            xml_text = _download_catalog_text()  # Enterprise catalog includes CPLD. [1](https://www.dell.com/support/kbdoc/en-us/000132986/dell-emc-catalog-links-for-poweredge-servers)
+            xml_text = _download_catalog_text()
         except Exception as e:
             details.append({"warning": f"catalog_download_error: {e}"})
 
@@ -358,7 +378,7 @@ def main() -> None:
                     details.append({"model": name, "productcode": entry.get("productcode"),
                                     "error": f"catalog_parse_error: {e}"})
 
-    # Always write files; let the workflow guard decide to fail if empty
+    # Always write files; let the workflow guard fail later if empty
     _write_overlay_and_report(overlay, details,
                               warn=("Resolver found no CPLD URLs" if not overlay else None))
 
