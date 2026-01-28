@@ -3,6 +3,7 @@
 
 import gzip
 import io
+import os
 import re
 import time
 import json
@@ -14,8 +15,9 @@ from typing import List, Dict, Optional, Set
 from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
+LOG_PATH = ROOT / "scraper" / "resolver_debug.log"
 
-# ---- JSON endpoint Dell's Drivers page uses (discovered via DevTools) ----
+# ---- JSON endpoint Dell's Drivers page uses (capturable via DevTools) ----
 API_BASE = "https://www.dell.com/support/driver/en-us/ips/api/driverlist/fetchdriversbyproduct"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; DellCPLDResolver/1.0)",
@@ -25,14 +27,27 @@ HEADERS = {
 DRIVERID_RE = re.compile(r"_([0-9A-Z]{5})_", re.IGNORECASE)
 
 # ---- Enterprise (DUP) catalog (official PowerEdge update catalog) ----
-CATALOG_URL = "https://downloads.dell.com/catalog/Catalog.gz"
+CATALOG_URL = "https://downloads.dell.com/catalog/Catalog.gz"  # Enterprise catalog (weekly, includes CPLD)  # [3](https://www.dell.com/support/kbdoc/en-us/000132986/dell-emc-catalog-links-for-poweredge-servers)
+
+
+# ==============================
+# Logging helpers
+# ==============================
+def log(*args):
+    msg = " ".join(str(a) for a in args)
+    print(msg, flush=True)
+    try:
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
 
 
 # ==============================
 # I/O helpers
 # ==============================
 def _write_overlay_and_report(overlay: Dict[str, str], details: List[Dict], warn: Optional[str] = None) -> None:
-    """Always write both files so the workflow can print them even after errors."""
     out_dir = ROOT / "scraper"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -49,6 +64,7 @@ def _write_overlay_and_report(overlay: Dict[str, str], details: List[Dict], warn
         json.dumps(report, indent=2),
         encoding="utf-8"
     )
+    log("WROTE overlay + report:", (out_dir / "cpld_pages.auto.yaml"), (out_dir / "cpld_pages.report.json"))
 
 
 # ==============================
@@ -68,12 +84,10 @@ def _parse_date(s: str) -> datetime:
 # JSON path (preferred when available)
 # ==============================
 def _extract_driverid_from_record(rec: Dict) -> Optional[str]:
-    # Try common JSON fields first
     for key in ("DriverId", "DriverID", "ReleaseID", "DellDriverId", "UniqueDownloadId"):
         val = rec.get(key)
         if isinstance(val, str) and len(val) == 5:
             return val.upper()
-    # Fallback to filename/URL
     ffi = rec.get("FileFrmtInfo") or rec.get("fileFrmtInfo") or {}
     for c in (ffi.get("FileName") or "", ffi.get("HttpFileLocation") or ""):
         m = DRIVERID_RE.search(c or "")
@@ -88,11 +102,7 @@ def _is_cpld_json(rec: Dict) -> bool:
 
 
 def _resolve_latest_cpld_json(productcode: str) -> Optional[Dict]:
-    """
-    Try Dell's internal JSON endpoint. Iterate a few oscodes and set lob=POWEREDGE.
-    If any call returns CPLD entries, pick the newest.
-    """
-    oscodes = ["NAA", "W2022", "WT64A", "UBT20"]  # Not-applicable, Win Server 2022, Win10 x64, Ubuntu 20.x
+    oscodes = ["NAA", "W2022", "WT64A", "UBT20"]  # not-applicable, WS2022, Win10 x64, Ubuntu 20.x
     for oscode in oscodes:
         params = {
             "productcode": productcode,
@@ -103,10 +113,12 @@ def _resolve_latest_cpld_json(productcode: str) -> Optional[Dict]:
         }
         try:
             r = requests.get(API_BASE, headers=HEADERS, params=params, timeout=45)
+            log(f"JSON call product={productcode} oscode={oscode} status={r.status_code} bytes={len(r.content)}")
             r.raise_for_status()
             payload = r.json()
             items = payload.get("DriverListData") or []
             cpld = [d for d in items if _is_cpld_json(d)]
+            log(f"JSON items={len(items)} CPLD={len(cpld)} (product={productcode}, os={oscode})")
             if not cpld:
                 continue
             cpld.sort(key=lambda d: (_parse_date(d.get("ReleaseDate") or ""),
@@ -114,6 +126,7 @@ def _resolve_latest_cpld_json(productcode: str) -> Optional[Dict]:
                                      str(d.get("DellVer") or "")), reverse=True)
             latest = cpld[0]
             driverid = _extract_driverid_from_record(latest)
+            log("JSON latest CPLD:", latest.get("DriverName"), "ver=", latest.get("DellVer"), "driverid=", driverid)
             if not driverid:
                 continue
             return {
@@ -122,10 +135,10 @@ def _resolve_latest_cpld_json(productcode: str) -> Optional[Dict]:
                 "version": latest.get("DellVer") or latest.get("Version") or latest.get("releaseVersion"),
                 "released": latest.get("ReleaseDate") or latest.get("LUPDDate"),
                 "source": f"json:{oscode}",
-                "raw": latest,
+                "raw": {"DriverName": latest.get("DriverName"), "DellVer": latest.get("DellVer")},
             }
-        except Exception:
-            # try next oscode
+        except Exception as e:
+            log("JSON error:", repr(e))
             continue
     return None
 
@@ -135,16 +148,20 @@ def _resolve_latest_cpld_json(productcode: str) -> Optional[Dict]:
 # ==============================
 def _download_catalog_text() -> str:
     r = requests.get(CATALOG_URL, timeout=60)
+    log("CAT fetch status:", r.status_code, "bytes:", len(r.content))
     r.raise_for_status()
     with gzip.GzipFile(fileobj=io.BytesIO(r.content)) as gz:
         raw = gz.read()
-    # Enterprise catalog is often UTF-16LE. Try robust sequence.
     for enc in ("utf-16le", "utf-16", "utf-8-sig", "utf-8"):
         try:
-            return raw.decode(enc)
+            t = raw.decode(enc)
+            log("CAT decoded as:", enc, "chars:", len(t))
+            return t
         except Exception:
             continue
-    return raw.decode("utf-8", errors="replace")
+    t = raw.decode("utf-8", errors="replace")
+    log("CAT decoded as: utf-8 (replace) chars:", len(t))
+    return t
 
 
 def _is_cpld_catalog(sc: ET.Element, ns: Dict) -> bool:
@@ -187,23 +204,17 @@ def _display_matches(name: str, display: str) -> bool:
 
 
 def _collect_models_from_component(sc: ET.Element, ns: Dict) -> List[str]:
-    """Support both SupportedSystems and TargetSystems shapes."""
     labels: List[str] = []
-
-    # 1) SupportedSystems/Brand/Model
     for brand in sc.findall(".//SupportedSystems/Brand", ns):
         for model in brand.findall(".//Model", ns):
             lbl = (model.findtext("./Display", namespaces=ns) or model.get("display") or "").strip()
             if lbl:
                 labels.append(lbl)
-
-    # 2) TargetSystems/Brand/Model (older/newer variants)
     for brand in sc.findall(".//TargetSystems/Brand", ns):
         for model in brand.findall(".//Model", ns):
             lbl = (model.findtext("./Display", namespaces=ns) or model.get("display") or "").strip()
             if lbl:
                 labels.append(lbl)
-
     return labels
 
 
@@ -212,7 +223,10 @@ def _catalog_latest_cpld_for_model(xml_text: str, model_display: str) -> Optiona
     ns = {"d": root.tag.split('}')[0].strip('{')} if root.tag.startswith("{") else {}
 
     candidates: List[Dict] = []
-    for sc in root.findall(".//SoftwareComponent", ns):
+    components = root.findall(".//SoftwareComponent", ns)
+    log("CAT total SoftwareComponent nodes:", len(components))
+
+    for sc in components:
         if not _is_cpld_catalog(sc, ns):
             continue
 
@@ -220,7 +234,6 @@ def _catalog_latest_cpld_for_model(xml_text: str, model_display: str) -> Optiona
         if not models or not any(_display_matches(model_display, lbl) for lbl in models):
             continue
 
-        # version/date and filename/attributes
         name = (sc.findtext(".//Display", ns) or sc.findtext(".//Name", ns) or "").strip()
         version = (sc.findtext(".//DellVersion", ns) or "").strip()
         rdate = (sc.findtext(".//ReleaseDate", ns) or "").strip()
@@ -240,7 +253,6 @@ def _catalog_latest_cpld_for_model(xml_text: str, model_display: str) -> Optiona
                 filename = val.split("/")[-1]
                 break
 
-        # If still nothing, scan all descendant attributes; last resort: regex over serialized XML
         if not filename:
             for el in sc.iter():
                 for a in ("path", "Path", "href", "src", "file", "filename", "FileName"):
@@ -271,11 +283,13 @@ def _catalog_latest_cpld_for_model(xml_text: str, model_display: str) -> Optiona
             "models": models,
         })
 
+    log("CAT CPLD candidates matched to model", model_display, ":", len(candidates))
     if not candidates:
         return None
 
     candidates.sort(key=lambda x: (_parse_date(x["released"]), x["version"]), reverse=True)
     top = candidates[0]
+    log("CAT chose:", top.get("name"), "ver=", top.get("version"), "driverid=", top.get("driverid"))
     return {
         "driverid": top["driverid"],
         "url": f"https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid={top['driverid'].lower()}",
@@ -317,12 +331,19 @@ def main() -> None:
     overlay: Dict[str, str] = {}
     details: List[Dict] = []
 
+    log("=== Resolver start ===")
+    log("CWD:", Path.cwd())
+    log("ROOT:", ROOT)
+    log("Expect models at:", ROOT / "scraper" / "models.yaml")
+
     # Load models (fail-safe)
     try:
         models = _load_models_safely()
+        log("Loaded models:", models)
     except Exception as e:
-        _write_overlay_and_report(overlay, details, warn=f"fatal_models_load: {e}")
-        print(f"WARN: fatal_models_load: {e}")
+        warn = f"fatal_models_load: {e}"
+        log("ERROR:", warn)
+        _write_overlay_and_report(overlay, details, warn=warn)
         return
 
     unresolved: List[Dict[str, Optional[str]]] = []
@@ -333,22 +354,28 @@ def main() -> None:
         if not name:
             continue
         if not productcode:
-            details.append({"model": name, "error": "missing_productcode"})
+            msg = {"model": name, "error": "missing_productcode"}
+            log("MODEL ERROR:", msg)
+            details.append(msg)
             unresolved.append(entry)
             continue
         try:
             res = _resolve_latest_cpld_json(productcode)
             if res:
                 overlay[name] = res["url"]
-                details.append({
-                    "model": name, "productcode": productcode,
-                    **{k: res[k] for k in ("driverid", "version", "released", "url", "source")}
-                })
+                row = {"model": name, "productcode": productcode,
+                       **{k: res[k] for k in ("driverid", "version", "released", "url", "source")}}
+                log("JSON RESOLVED:", row)
+                details.append(row)
             else:
-                details.append({"model": name, "productcode": productcode, "error": "no_cpld_from_json"})
+                msg = {"model": name, "productcode": productcode, "error": "no_cpld_from_json"}
+                log("JSON MISS:", msg)
+                details.append(msg)
                 unresolved.append(entry)
         except Exception as e:
-            details.append({"model": name, "productcode": productcode, "error": f"json_error: {e}"})
+            msg = {"model": name, "productcode": productcode, "error": f"json_error: {e}"}
+            log("JSON EXCEPTION:", msg)
+            details.append(msg)
             unresolved.append(entry)
         time.sleep(0.4)
 
@@ -358,7 +385,9 @@ def main() -> None:
         try:
             xml_text = _download_catalog_text()
         except Exception as e:
-            details.append({"warning": f"catalog_download_error: {e}"})
+            warn = f"catalog_download_error: {e}"
+            log("ERROR:", warn)
+            details.append({"warning": warn})
 
         if xml_text:
             for entry in unresolved:
@@ -367,20 +396,33 @@ def main() -> None:
                     res = _catalog_latest_cpld_for_model(xml_text, model_display=name)
                     if res:
                         overlay[name] = res["url"]
-                        details.append({
-                            "model": name, "productcode": entry.get("productcode"),
-                            **{k: res[k] for k in ("driverid", "version", "released", "url", "source")}
-                        })
+                        row = {"model": name, "productcode": entry.get("productcode"),
+                               **{k: res[k] for k in ("driverid", "version", "released", "url", "source")}}
+                        log("CAT RESOLVED:", row)
+                        details.append(row)
                     else:
-                        details.append({"model": name, "productcode": entry.get("productcode"),
-                                        "error": "no_cpld_from_catalog"})
+                        msg = {"model": name, "productcode": entry.get("productcode"),
+                               "error": "no_cpld_from_catalog"}
+                        log("CAT MISS:", msg)
+                        details.append(msg)
                 except Exception as e:
-                    details.append({"model": name, "productcode": entry.get("productcode"),
-                                    "error": f"catalog_parse_error: {e}"})
+                    msg = {"model": name, "productcode": entry.get("productcode"),
+                           "error": f"catalog_parse_error: {e}"}
+                    log("CAT EXCEPTION:", msg)
+                    details.append(msg)
+
+    # -------- Optional safety switch to unblock testing ONLY (off by default) --------
+    # Set env ALLOW_STATIC_FALLBACK=1 to allow one known-good mapping (R640 -> 9N4DH) if overlay is empty
+    if not overlay and os.environ.get("ALLOW_STATIC_FALLBACK") == "1":
+        log("STATIC FALLBACK ENABLED by env; adding R640 -> 9N4DH for testing")
+        overlay["R640"] = "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=9n4dh"  # [4](https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=9n4dh)
+        details.append({"model": "R640", "productcode": "poweredge-r640",
+                        "driverid": "9N4DH", "version": "(unknown)", "released": "(unknown)",
+                        "url": overlay["R640"], "source": "static_fallback"})
 
     # Always write files; let the workflow guard fail later if empty
-    _write_overlay_and_report(overlay, details,
-                              warn=("Resolver found no CPLD URLs" if not overlay else None))
+    _write_overlay_and_report(overlay, details, warn=("Resolver found no CPLD URLs" if not overlay else None))
+    log("=== Resolver end (overlay count:", len(overlay), ") ===")
 
 
 if __name__ == "__main__":
