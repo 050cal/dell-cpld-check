@@ -6,7 +6,7 @@ on:
     - cron: "17 6 * * 1-5"   # Weekdays 06:17 UTC
 
 permissions:
-  contents: write   # allow commits to the repo
+  contents: write
 
 jobs:
   build:
@@ -15,6 +15,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Show repo tree (before)
+        run: |
+          pwd
+          ls -la
+          echo "---- scraper/ ----"
+          ls -la scraper || true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -26,6 +33,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests pyyaml beautifulsoup4 lxml
 
+      - name: Print models.yaml
+        run: |
+          echo "----- scraper/models.yaml -----"
+          cat scraper/models.yaml
+
       - name: Resolve latest CPLD URLs (creates scraper/cpld_pages.auto.yaml)
         run: python scraper/resolve_cpld_urls.py
 
@@ -35,6 +47,20 @@ jobs:
           test -f scraper/cpld_pages.auto.yaml && cat scraper/cpld_pages.auto.yaml || echo "MISSING"
           echo "----- cpld_pages.report.json -----"
           test -f scraper/cpld_pages.report.json && cat scraper/cpld_pages.report.json || echo "MISSING"
+
+      - name: Fail if overlay is empty or malformed
+        run: |
+          python - <<'PY'
+          import sys, yaml, pathlib
+          p = pathlib.Path("scraper/cpld_pages.auto.yaml")
+          if not p.exists():
+              sys.exit("ERROR: Overlay missing (scraper/cpld_pages.auto.yaml)")
+          data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+          if not isinstance(data, dict) or "CPLD_PAGES" not in data or not isinstance(data["CPLD_PAGES"], dict) or not data["CPLD_PAGES"]:
+              print("DEBUG overlay:", data)
+              sys.exit("ERROR: Overlay has no CPLD_PAGES or is empty. Check models.yaml productcode slugs & resolver logs.")
+          print("Overlay looks good. Models resolved:", ", ".join(sorted(data["CPLD_PAGES"].keys())))
+          PY
 
       - name: Commit overlay (if changed)
         run: |
@@ -52,3 +78,4 @@ jobs:
           git add site/latest.json
           git diff --cached --quiet || git commit -m "chore: update latest.json"
           git diff --cached --quiet || git push
+``
