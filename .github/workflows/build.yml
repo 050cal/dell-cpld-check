@@ -135,4 +135,3 @@ jobs:
           git add site/latest.json
           git diff --cached --quiet || git commit -m "chore: update latest.json"
           git diff --cached --quiet || git push
-``
