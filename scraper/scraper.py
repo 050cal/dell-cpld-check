@@ -59,6 +59,8 @@ def get_latest_for_model(model: str) -> dict:
     ver = parse_version(r.text)
     return {"model": model, "cpld": ver, "source": url}
 
+# ... existing imports and setup ...
+
 def main():
     out = {
         "generated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -67,9 +69,11 @@ def main():
 
     for m in MODELS:
         try:
-            info = get_latest_for_model(m)
+            model_name = m["name"] if isinstance(m, dict) else m
+            info = get_latest_for_model(model_name)
+            info["model"] = model_name  # ensure model is a string in output
         except Exception as e:
-            info = {"model": m, "error": str(e)}
+            info = {"model": (m.get("name") if isinstance(m, dict) else m), "error": str(e)}
         out["models"].append(info)
 
     site = ROOT / "site"
