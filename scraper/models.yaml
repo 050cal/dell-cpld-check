@@ -1,13 +1,25 @@
+# scraper/models.yaml
 models:
-  - R640
-  - R740
-  - R740XD
-  - R650
-  - R750
-  - C6525
-  - PowerEdge T340
-  - PowerEdge R450
-  - PowerEdge R350
-  - PowerEdge R440
-  - PowerEdge R550
+  - name: "R640"
+    productcode: "poweredge-r640"
+  - name: "R740"
+    productcode: "poweredge-r740"
+  - name: "R740XD"
+    productcode: "poweredge-r740xd"
+  - name: "R650"
+    productcode: "poweredge-r650"
+  - name: "R750"
+    productcode: "poweredge-r750"
+  - name: "C6525"
+    productcode: "poweredge-c6525"
+  - name: "PowerEdge T340"
+    productcode: "poweredge-t340"
+  - name: "PowerEdge R450"
+    productcode: "poweredge-r450"
+  - name: "PowerEdge R350"
+    productcode: "poweredge-r350"
+  - name: "PowerEdge R440"
+    productcode: "poweredge-r440"
+  - name: "PowerEdge R550"
+    productcode: "poweredge-r550"
 
