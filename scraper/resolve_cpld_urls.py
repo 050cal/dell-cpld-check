@@ -27,7 +27,7 @@ DRIVERID_RE = re.compile(r"_([0-9A-Z]{5})_", re.IGNORECASE)
 
 # ---- Enterprise (DUP) catalog that includes CPLD ----
 CATALOG_URL = "https://downloads.dell.com/catalog/Catalog.gz"  # Enterprise catalog
-# Dell’s official KB references this family of catalogs for PowerEdge updates. [1](https://www.dell.com/support/kbdoc/en-us/000132986/dell-emc-catalog-links-for-poweredge-servers)
+# Per Dell KB: PowerEdge Server catalogs & links (Enterprise Catalog = Catalog.gz). [1](https://www.dell.com/support/kbdoc/en-us/000132986/dell-emc-catalog-links-for-poweredge-servers)
 
 def _parse_date(s: str) -> datetime:
     s = (s or "").strip()
@@ -54,37 +54,54 @@ def _is_cpld_json(rec: dict) -> bool:
     blob = " ".join(str(rec.get(k) or "") for k in ("DriverName", "Category", "ComponentType")).upper()
     return "CPLD" in blob
 
-def _resolve_latest_cpld_json(productcode: str, oscode: str = "NAA") -> dict | None:
-    params = {"productcode": productcode, "oscode": oscode, "initialload": "true", "_": str(int(time.time()*1000))}
-    r = requests.get(API_BASE, headers=HEADERS, params=params, timeout=45)
-    r.raise_for_status()
-    payload = r.json()
-    items = payload.get("DriverListData") or []
-    cpld = [d for d in items if _is_cpld_json(d)]
-    if not cpld:
-        return None
-    cpld.sort(key=lambda d: (_parse_date(d.get("ReleaseDate") or ""),
-                             _parse_date(d.get("LUPDDate") or ""),
-                             str(d.get("DellVer") or "")), reverse=True)
-    latest = cpld[0]
-    driverid = _extract_driverid_from_record(latest)
-    if not driverid:
-        return None
-    return {
-        "driverid": driverid,
-        "url": f"https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid={driverid.lower()}",
-        "version": latest.get("DellVer") or latest.get("Version") or latest.get("releaseVersion"),
-        "released": latest.get("ReleaseDate") or latest.get("LUPDDate"),
-        "source": "json",
-        "raw": latest,
-    }
+def _resolve_latest_cpld_json(productcode: str) -> dict | None:
+    """
+    Try the same JSON API the Dell Drivers page uses. We try a few common oscodes
+    and set lob=POWEREDGE (servers). If any returns CPLD entries, pick newest.
+    """
+    oscodes = ["NAA", "W2022", "WT64A", "UBT20"]  # Not-applicable, Win 2022, Win 10 x64, Ubuntu 20.x
+    for oscode in oscodes:
+        params = {
+            "productcode": productcode,
+            "oscode": oscode,
+            "lob": "POWEREDGE",
+            "initialload": "true",
+            "_": str(int(time.time() * 1000)),
+        }
+        try:
+            r = requests.get(API_BASE, headers=HEADERS, params=params, timeout=45)
+            r.raise_for_status()
+            payload = r.json()
+            items = payload.get("DriverListData") or []
+            cpld = [d for d in items if _is_cpld_json(d)]
+            if not cpld:
+                continue
+            cpld.sort(key=lambda d: (_parse_date(d.get("ReleaseDate") or ""),
+                                     _parse_date(d.get("LUPDDate") or ""),
+                                     str(d.get("DellVer") or "")), reverse=True)
+            latest = cpld[0]
+            driverid = _extract_driverid_from_record(latest)
+            if not driverid:
+                continue
+            return {
+                "driverid": driverid,
+                "url": f"https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid={driverid.lower()}",
+                "version": latest.get("DellVer") or latest.get("Version") or latest.get("releaseVersion"),
+                "released": latest.get("ReleaseDate") or latest.get("LUPDDate"),
+                "source": f"json:{oscode}",
+                "raw": latest,
+            }
+        except Exception:
+            # try next oscode
+            continue
+    return None
 
 # ---------------- Catalog fallback ----------------
 
 def _download_catalog_text() -> str:
     r = requests.get(CATALOG_URL, timeout=60)
     r.raise_for_status()
-    # Catalog.gz contains UTF-16 XML (Dell publishes Enterprise catalog this way)
+    # Enterprise Catalog is gzip-compressed; inner XML is often UTF-16; fallback to UTF-8 if needed.
     with gzip.GzipFile(fileobj=io.BytesIO(r.content)) as gz:
         raw = gz.read()
     try:
@@ -104,17 +121,36 @@ def _extract_driverid_from_filename(name: str) -> str | None:
     m = DRIVERID_RE.search(name or "")
     return m.group(1).upper() if m else None
 
+def _canon(s: str) -> str:
+    # canonicalize a model label for matching
+    return re.sub(r"\s+", " ", s.strip().lower())
+
+def _labels_for_name(name: str) -> set[str]:
+    # acceptable display labels for this model (seen in catalog)
+    base = name.strip()
+    labels = {base, f"poweredge {base}"}
+    labels |= {f"dell {base}", f"dell poweredge {base}", f"dell emc poweredge {base}"}
+    return {_canon(x) for x in labels}
+
+def _display_matches(name: str, display: str) -> bool:
+    # match if canonical display equals one of generated labels, or contains base token
+    labset = _labels_for_name(name)
+    disp = _canon(display)
+    if disp in labset:
+        return True
+    base = _canon(name)
+    return bool(re.search(rf"\b{re.escape(base)}\b", disp))
+
 def _catalog_latest_cpld_for_model(xml_text: str, model_display: str) -> dict | None:
     root = ET.fromstring(xml_text)
     ns = {"d": root.tag.split('}')[0].strip('{')} if root.tag.startswith("{") else {}
 
-    # Find all CPLD SoftwareComponents that target this model by Display text match
     candidates = []
     for sc in root.findall(".//SoftwareComponent", ns):
         if not _is_cpld_catalog(sc, ns):
             continue
 
-        # collect models this component applies to (Display labels)
+        # target model displays for this component
         models = []
         for brand in sc.findall(".//TargetSystems/Brand", ns):
             for model in brand.findall(".//Model", ns):
@@ -122,15 +158,15 @@ def _catalog_latest_cpld_for_model(xml_text: str, model_display: str) -> dict | 
                 if lbl:
                     models.append(lbl)
 
-        if model_display not in set(models):
+        # tolerant match: accept "R640", "PowerEdge R640", "Dell EMC PowerEdge R640", etc.
+        if not any(_display_matches(model_display, lbl) for lbl in models):
             continue
 
-        # gather version/date and filename
+        # version/date and filename
         name = (sc.findtext(".//Display", ns) or sc.findtext(".//Name", ns) or "").strip()
         version = (sc.findtext(".//DellVersion", ns) or "").strip()
         rdate = (sc.findtext(".//ReleaseDate", ns) or "").strip()
 
-        # try common path nodes to get filename
         filename = ""
         for tag in ("Path", "PackagePath", "Location"):
             el = sc.find(f".//{tag}", ns)
@@ -159,10 +195,7 @@ def _catalog_latest_cpld_for_model(xml_text: str, model_display: str) -> dict | 
     if not candidates:
         return None
 
-    # newest by ReleaseDate then Version string
-    def skey(x):
-        return (_parse_date(x["released"]), x["version"])
-    candidates.sort(key=skey, reverse=True)
+    candidates.sort(key=lambda x: (_parse_date(x["released"]), x["version"]), reverse=True)
     top = candidates[0]
     return {
         "driverid": top["driverid"],
@@ -174,7 +207,7 @@ def _catalog_latest_cpld_for_model(xml_text: str, model_display: str) -> dict | 
     }
 
 def main():
-    # Load models and normalize to list of dicts with {name, productcode}
+    # Normalize to list of dicts {name, productcode}
     models = []
     for m in MODELS:
         if isinstance(m, dict):
@@ -202,7 +235,8 @@ def main():
             res = _resolve_latest_cpld_json(productcode)
             if res:
                 overlay[name] = res["url"]
-                details.append({"model": name, "productcode": productcode, **{k: res[k] for k in ("driverid","version","released","url","source")}})
+                details.append({"model": name, "productcode": productcode,
+                                **{k: res[k] for k in ("driverid","version","released","url","source")}})
             else:
                 details.append({"model": name, "productcode": productcode, "error": "no_cpld_from_json"})
                 unresolved.append(entry)
@@ -211,13 +245,14 @@ def main():
             unresolved.append(entry)
         time.sleep(0.4)
 
-    # If anything unresolved, fall back to Enterprise catalog
+    # Fallback: Enterprise catalog
     if unresolved:
         try:
-            xml_text = _download_catalog_text()  # Enterprise catalog (includes CPLD) [1](https://www.dell.com/support/kbdoc/en-us/000132986/dell-emc-catalog-links-for-poweredge-servers)
+            xml_text = _download_catalog_text()  # Enterprise catalog (includes CPLD). [1](https://www.dell.com/support/kbdoc/en-us/000132986/dell-emc-catalog-links-for-poweredge-servers)
         except Exception as e:
             for entry in unresolved:
-                details.append({"model": entry["name"], "productcode": entry.get("productcode"), "error": f"catalog_download_error: {e}"})
+                details.append({"model": entry["name"], "productcode": entry.get("productcode"),
+                                "error": f"catalog_download_error: {e}"})
             xml_text = ""
 
         if xml_text:
@@ -227,11 +262,14 @@ def main():
                     res = _catalog_latest_cpld_for_model(xml_text, model_display=name)
                     if res:
                         overlay[name] = res["url"]
-                        details.append({"model": name, "productcode": entry.get("productcode"), **{k: res[k] for k in ("driverid","version","released","url","source")}})
+                        details.append({"model": name, "productcode": entry.get("productcode"),
+                                        **{k: res[k] for k in ("driverid","version","released","url","source")}})
                     else:
-                        details.append({"model": name, "productcode": entry.get("productcode"), "error": "no_cpld_from_catalog"})
+                        details.append({"model": name, "productcode": entry.get("productcode"),
+                                        "error": "no_cpld_from_catalog"})
                 except Exception as e:
-                    details.append({"model": name, "productcode": entry.get("productcode"), "error": f"catalog_parse_error: {e}"})
+                    details.append({"model": name, "productcode": entry.get("productcode"),
+                                    "error": f"catalog_parse_error: {e}"})
 
     # Write overlay + report
     out_dir = ROOT / "scraper"
@@ -242,7 +280,8 @@ def main():
         encoding="utf-8"
     )
     (out_dir / "cpld_pages.report.json").write_text(
-        json.dumps({"generated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "models": details}, indent=2),
+        json.dumps({"generated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "models": details}, indent=2),
         encoding="utf-8"
     )
 
