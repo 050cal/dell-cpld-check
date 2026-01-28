@@ -21,6 +21,18 @@ CPLD_PAGES = {
     "PowerEdge R550":    "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pryjm",
 }
 
+
+# NEW: overlay with auto-generated URLs (if present)
+auto_map_path = ROOT / "scraper" / "cpld_pages.auto.yaml"
+if auto_map_path.exists():
+    try:
+        auto_map = yaml.safe_load(auto_map_path.read_text(encoding="utf-8")) or {}
+        if isinstance(auto_map, dict) and "CPLD_PAGES" in auto_map:
+            CPLD_PAGES.update(auto_map["CPLD_PAGES"])
+    except Exception:
+        pass
+
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; DellCPLDChecker/1.0; +https://github.com/<you>/dell-cpld-check)"
 }
