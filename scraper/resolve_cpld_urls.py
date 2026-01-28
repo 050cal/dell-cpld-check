@@ -285,9 +285,9 @@ def main():
         encoding="utf-8"
     )
 
-    # Fail clearly if truly nothing found
-    if not overlay:
-        raise SystemExit("Resolver found no CPLD URLs. Check models.yaml productcode slugs, network access, or catalog parsing.")
+   # Do not hard-exit here; let the workflow's guard step print the files and fail clearly.
+if not overlay:
+    print("WARN: Resolver found no CPLD URLs – see cpld_pages.report.json for details")
 
 if __name__ == "__main__":
     main()
