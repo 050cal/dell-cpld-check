@@ -1,60 +1,82 @@
 {
-  "generated_utc": "2026-01-28T04:09:00Z",
+  "generated_utc": "2026-01-28T17:25:45Z",
   "models": [
     {
-      "model": "R640",
-      "cpld": "1.0.6",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=9n4dh"
+      "model": {
+        "name": "R640",
+        "productcode": "poweredge-r640"
+      },
+      "error": "unhashable type: 'dict'"
     },
     {
-      "model": "R740",
-      "cpld": "1.1.4",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=g65gh"
+      "model": {
+        "name": "R740",
+        "productcode": "poweredge-r740"
+      },
+      "error": "unhashable type: 'dict'"
     },
     {
-      "model": "R740XD",
-      "cpld": "1.1.4",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=g65gh"
+      "model": {
+        "name": "R740XD",
+        "productcode": "poweredge-r740xd"
+      },
+      "error": "unhashable type: 'dict'"
     },
     {
-      "model": "R650",
-      "cpld": "1.1.1",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=fctdf"
+      "model": {
+        "name": "R650",
+        "productcode": "poweredge-r650"
+      },
+      "error": "unhashable type: 'dict'"
     },
     {
-      "model": "R750",
-      "cpld": "1.1.1",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=fctdf"
+      "model": {
+        "name": "R750",
+        "productcode": "poweredge-r750"
+      },
+      "error": "unhashable type: 'dict'"
     },
     {
-      "model": "C6525",
-      "cpld": "1.1.4",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=wv5d3"
+      "model": {
+        "name": "C6525",
+        "productcode": "poweredge-c6525"
+      },
+      "error": "unhashable type: 'dict'"
     },
     {
-      "model": "PowerEdge T340",
-      "cpld": "1.0.5",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=r5kd4"
+      "model": {
+        "name": "PowerEdge T340",
+        "productcode": "poweredge-t340"
+      },
+      "error": "unhashable type: 'dict'"
     },
     {
-      "model": "PowerEdge R450",
-      "cpld": "1.0.7",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pryjm"
+      "model": {
+        "name": "PowerEdge R450",
+        "productcode": "poweredge-r450"
+      },
+      "error": "unhashable type: 'dict'"
     },
     {
-      "model": "PowerEdge R350",
-      "cpld": "1.0.3",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=w1htn"
+      "model": {
+        "name": "PowerEdge R350",
+        "productcode": "poweredge-r350"
+      },
+      "error": "unhashable type: 'dict'"
     },
     {
-      "model": "PowerEdge R440",
-      "cpld": "1.0.10",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=1gw62"
+      "model": {
+        "name": "PowerEdge R440",
+        "productcode": "poweredge-r440"
+      },
+      "error": "unhashable type: 'dict'"
     },
     {
-      "model": "PowerEdge R550",
-      "cpld": "1.0.7",
-      "source": "https://www.dell.com/support/home/en-us/drivers/driversdetails?driverid=pryjm"
+      "model": {
+        "name": "PowerEdge R550",
+        "productcode": "poweredge-r550"
+      },
+      "error": "unhashable type: 'dict'"
     }
   ]
 }
