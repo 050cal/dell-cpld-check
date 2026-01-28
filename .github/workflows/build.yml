@@ -38,8 +38,65 @@ jobs:
           echo "----- scraper/models.yaml -----"
           cat scraper/models.yaml
 
+      # ---------- Diagnostics #1: probe Dell JSON endpoint ----------
+      - name: Probe Dell JSON endpoint (R640)
+        run: |
+          python - <<'PY'
+          import requests, time, json
+          url = "https://www.dell.com/support/driver/en-us/ips/api/driverlist/fetchdriversbyproduct"
+          params = {
+              "productcode": "poweredge-r640",
+              "oscode": "NAA",
+              "lob": "POWEREDGE",
+              "initialload": "true",
+              "_": str(int(time.time()*1000)),
+          }
+          h = {"X-Requested-With":"XMLHttpRequest","User-Agent":"Mozilla/5.0 (ActionsProbe)"}
+          try:
+              r = requests.get(url, params=params, headers=h, timeout=45)
+              print("JSON status:", r.status_code)
+              print("JSON length:", len(r.text))
+              data = r.json()
+              items = data.get("DriverListData") or []
+              cpld_items = [d for d in items if "CPLD" in (" ".join([str(d.get(k,"")) for k in ("DriverName","Category","ComponentType")])).upper()]
+              print("JSON CPLD items:", len(cpld_items))
+              print("First CPLD names:", [ (cpld_items[i].get("DriverName")) for i in range(min(3, len(cpld_items))) ])
+          except Exception as e:
+              print("JSON probe error:", e)
+          PY
+
+      # ---------- Diagnostics #2: probe Enterprise Catalog ----------
+      - name: Probe Enterprise Catalog (Catalog.gz)
+        run: |
+          python - <<'PY'
+          import requests, gzip, io, re
+          CATALOG_URL = "https://downloads.dell.com/catalog/Catalog.gz"
+          r = requests.get(CATALOG_URL, timeout=60)
+          print("CAT status:", r.status_code)
+          print("CAT bytes:", len(r.content))
+          raw = gzip.GzipFile(fileobj=io.BytesIO(r.content)).read()
+          text = None
+          for enc in ("utf-16le","utf-16","utf-8-sig","utf-8"):
+              try:
+                  text = raw.decode(enc)
+                  print("CAT decoded as:", enc)
+                  break
+              except Exception:
+                  pass
+          if text is None:
+              text = raw.decode("utf-8", errors="replace")
+              print("CAT decoded as: utf-8 (replace)")
+          # Rough CPLD count
+          cpld_count = len(re.findall(r"CPLD", text, flags=re.IGNORECASE))
+          print("CAT CPLD token count:", cpld_count)
+          # Show a small sample if present
+          import re as _re
+          m = _re.search(r"CPLD_Firmware_([0-9A-Z]{5})_", text)
+          print("Sample CPLD driverid token:", m.group(1) if m else "NONE")
+          PY
+
       - name: Resolve latest CPLD URLs (creates scraper/cpld_pages.auto.yaml)
-        run: python scraper/resolve_cpld_urls.py
+        run: python scraper/resolve_cpld_urls.py || true
 
       - name: Show resolver output (overlay + report)
         run: |
@@ -78,3 +135,4 @@ jobs:
           git add site/latest.json
           git diff --cached --quiet || git commit -m "chore: update latest.json"
           git diff --cached --quiet || git push
+``
